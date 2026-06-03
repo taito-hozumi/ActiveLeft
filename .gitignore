@@ -1,0 +1,16 @@
+.DS_Store
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# Local app bundles and build logs
+build/
+*.log
+
+# Xcode and local editor state
+DerivedData/
+*.xcworkspace/
+xcuserdata/
+.vscode/
+.idea/
