@@ -14,12 +14,18 @@ Use this checklist before making the repository public.
    ./scripts/self_test.sh
    ```
 
-3. Optionally check the login-item installer with a temporary install path:
+3. Optionally check the login-item installer with a temporary install path and label:
 
    ```bash
+   if pgrep -x ActiveLeft >/dev/null 2>&1; then
+     echo "Quit ActiveLeft before running the installer smoke test." >&2
+     exit 1
+   fi
+
    tmp_install_dir="$(mktemp -d)"
-   ACTIVELEFT_INSTALL_DIR="$tmp_install_dir" ./scripts/install_launch_agent.sh
-   ACTIVELEFT_INSTALL_DIR="$tmp_install_dir" ./scripts/uninstall_launch_agent.sh
+   tmp_label="com.example.activeleft.publish-test.$$"
+   ACTIVELEFT_INSTALL_DIR="$tmp_install_dir" ACTIVELEFT_LAUNCH_AGENT_LABEL="$tmp_label" ./scripts/install_launch_agent.sh
+   ACTIVELEFT_INSTALL_DIR="$tmp_install_dir" ACTIVELEFT_LAUNCH_AGENT_LABEL="$tmp_label" ./scripts/uninstall_launch_agent.sh
    rmdir "$tmp_install_dir"
    ```
 
