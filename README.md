@@ -52,10 +52,11 @@ The menu bar item starts as `ActiveLeft: Left`.
 This installs:
 
 ```text
+~/Applications/ActiveLeft.app
 ~/Library/LaunchAgents/com.hozumitaito.activeleft.plist
 ```
 
-No `sudo` is used.
+No `sudo` is used. If ActiveLeft is already running, the installer stops it before starting the installed copy.
 
 To remove it:
 
@@ -78,6 +79,13 @@ You can override the LaunchAgent label during install or uninstall:
 ```bash
 ACTIVELEFT_LAUNCH_AGENT_LABEL=io.github.example.activeleft ./scripts/install_launch_agent.sh
 ACTIVELEFT_LAUNCH_AGENT_LABEL=io.github.example.activeleft ./scripts/uninstall_launch_agent.sh
+```
+
+You can override the install location:
+
+```bash
+ACTIVELEFT_INSTALL_DIR="$HOME/Applications" ./scripts/install_launch_agent.sh
+ACTIVELEFT_INSTALL_DIR="$HOME/Applications" ./scripts/uninstall_launch_agent.sh
 ```
 
 ## Verification
@@ -103,6 +111,8 @@ You can run the bundled smoke test:
 ## What ActiveLeft Is Not
 
 ActiveLeft is not a full power-management suite. It does not schedule wake/sleep windows, prevent all sleep modes, keep a closed MacBook awake, or replace tools such as Amphetamine. It is a small display-only toggle for people who want one obvious menu bar state and no persistent system-setting changes.
+
+Only one copy of ActiveLeft runs at a time for the same bundle identifier. If another copy is already open, the newer process exits.
 
 ## License
 

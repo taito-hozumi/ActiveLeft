@@ -7,6 +7,15 @@ BUNDLE_ID="${ACTIVELEFT_BUNDLE_ID:-com.hozumitaito.activeleft}"
 VERSION="${ACTIVELEFT_VERSION:-0.1.0}"
 BUILD_NUMBER="${ACTIVELEFT_BUILD_NUMBER:-1}"
 
+xml_escape() {
+  sed \
+    -e 's/&/\&amp;/g' \
+    -e 's/</\&lt;/g' \
+    -e 's/>/\&gt;/g' \
+    -e 's/"/\&quot;/g' \
+    -e "s/'/\&apos;/g"
+}
+
 if [[ "$CONFIGURATION" != "debug" && "$CONFIGURATION" != "release" ]]; then
   echo "Usage: $0 [debug|release]" >&2
   exit 2
@@ -23,6 +32,9 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 SWIFT_BUILD_LOG="$ROOT_DIR/build/swift-build.log"
 BINARY_PATH="$ROOT_DIR/.build/$CONFIGURATION/ActiveLeft"
 BUILD_ENGINE="swift"
+PLIST_BUNDLE_ID="$(printf '%s' "$BUNDLE_ID" | xml_escape)"
+PLIST_VERSION="$(printf '%s' "$VERSION" | xml_escape)"
+PLIST_BUILD_NUMBER="$(printf '%s' "$BUILD_NUMBER" | xml_escape)"
 
 if ! swift build -c "$CONFIGURATION" > "$SWIFT_BUILD_LOG" 2>&1; then
   echo "swift build failed in this Command Line Tools environment; using clang fallback." >&2
@@ -50,7 +62,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>
   <string>ActiveLeft</string>
   <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_ID</string>
+  <string>$PLIST_BUNDLE_ID</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
@@ -58,9 +70,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>$VERSION</string>
+  <string>$PLIST_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>$BUILD_NUMBER</string>
+  <string>$PLIST_BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>LSUIElement</key>
@@ -70,6 +82,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
 
 echo "Built $APP_DIR using $BUILD_ENGINE"
 echo "Bundle identifier: $BUNDLE_ID"

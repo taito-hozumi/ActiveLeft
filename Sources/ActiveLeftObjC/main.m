@@ -302,9 +302,34 @@ static int runSelfTest(void) {
     return 0;
 }
 
+static BOOL anotherInstanceIsRunning(void) {
+    NSString *bundleIdentifier = NSBundle.mainBundle.bundleIdentifier;
+
+    if (bundleIdentifier.length == 0) {
+        return NO;
+    }
+
+    pid_t currentPID = getpid();
+
+    for (NSRunningApplication *application in [NSRunningApplication runningApplicationsWithBundleIdentifier:bundleIdentifier]) {
+        if (application.processIdentifier == currentPID || application.isTerminated) {
+            continue;
+        }
+
+        [application activateWithOptions:0];
+        return YES;
+    }
+
+    return NO;
+}
+
 int main(int argc, const char *argv[]) {
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) {
         return runSelfTest();
+    }
+
+    if (anotherInstanceIsRunning()) {
+        return 0;
     }
 
     @autoreleasepool {

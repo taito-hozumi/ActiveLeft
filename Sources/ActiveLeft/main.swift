@@ -235,5 +235,18 @@ if CommandLine.arguments.contains("--self-test") {
     }
 }
 
+if let bundleIdentifier = Bundle.main.bundleIdentifier {
+    let existingInstance = NSRunningApplication
+        .runningApplications(withBundleIdentifier: bundleIdentifier)
+        .first { application in
+            application.processIdentifier != getpid() && !application.isTerminated
+        }
+
+    if let existingInstance {
+        existingInstance.activate()
+        exit(0)
+    }
+}
+
 app.delegate = delegate
 app.run()
