@@ -38,7 +38,7 @@ Use this checklist before making the repository public.
 5. Create a GitHub repository named `ActiveLeft`, then push:
 
    ```bash
-   git remote add origin git@github.com:hozumitaito/ActiveLeft.git
+   git remote add origin git@github.com:taito-hozumi/ActiveLeft.git
    git branch -M main
    git push -u origin main
    ```
