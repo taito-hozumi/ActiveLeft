@@ -3,51 +3,97 @@ import Dispatch
 import Foundation
 
 final class CaffeinateController {
-    private var process: Process?
+    private var systemProcess: Process?
+    private var displayProcess: Process?
 
     var onStateChanged: (() -> Void)?
 
     var isActive: Bool {
-        process?.isRunning == true
+        displayProcess?.isRunning == true
     }
 
-    func start() throws {
+    func startSystemAwake() throws {
         cleanupExitedProcess()
 
-        guard !isActive else {
+        guard systemProcess?.isRunning != true else {
             return
         }
 
+        systemProcess = try startCaffeinate(arguments: ["-i", "-s", "-w", String(getpid())])
+    }
+
+    func startDisplayAwake() throws {
+        try startSystemAwake()
+        cleanupExitedProcess()
+
+        guard displayProcess?.isRunning != true else {
+            return
+        }
+
+        displayProcess = try startCaffeinate(arguments: ["-d", "-w", String(getpid())])
+        onStateChanged?()
+    }
+
+    func stopDisplayAwake() {
+        cleanupExitedProcess()
+
+        guard let currentProcess = displayProcess else {
+            onStateChanged?()
+            return
+        }
+
+        stopProcess(currentProcess)
+
+        if displayProcess === currentProcess {
+            displayProcess = nil
+        }
+
+        onStateChanged?()
+    }
+
+    func stopAll() {
+        cleanupExitedProcess()
+
+        if let currentProcess = displayProcess {
+            stopProcess(currentProcess)
+        }
+
+        if let currentProcess = systemProcess {
+            stopProcess(currentProcess)
+        }
+
+        displayProcess = nil
+        systemProcess = nil
+        onStateChanged?()
+    }
+
+    private func startCaffeinate(arguments: [String]) throws -> Process {
         let nextProcess = Process()
         nextProcess.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
-        nextProcess.arguments = ["-d", "-w", String(getpid())]
+        nextProcess.arguments = arguments
         nextProcess.standardInput = FileHandle.nullDevice
         nextProcess.standardOutput = FileHandle.nullDevice
         nextProcess.standardError = FileHandle.nullDevice
         nextProcess.terminationHandler = { [weak self] finishedProcess in
             DispatchQueue.main.async {
-                guard let self, self.process === finishedProcess else {
-                    return
+                guard let self else { return }
+
+                if self.displayProcess === finishedProcess {
+                    self.displayProcess = nil
+                    self.onStateChanged?()
                 }
 
-                self.process = nil
-                self.onStateChanged?()
+                if self.systemProcess === finishedProcess {
+                    self.systemProcess = nil
+                }
             }
         }
 
         try nextProcess.run()
-        process = nextProcess
-        onStateChanged?()
+        return nextProcess
     }
 
-    func stop() {
-        cleanupExitedProcess()
-
-        guard let currentProcess = process else {
-            onStateChanged?()
-            return
-        }
-
+    private func stopProcess(_ currentProcess: Process) {
         if currentProcess.isRunning {
             currentProcess.terminate()
 
@@ -56,17 +102,15 @@ final class CaffeinateController {
                 _ = waitForExit(currentProcess, timeout: 1.0)
             }
         }
-
-        if process === currentProcess {
-            process = nil
-        }
-
-        onStateChanged?()
     }
 
     private func cleanupExitedProcess() {
-        if let currentProcess = process, !currentProcess.isRunning {
-            process = nil
+        if let currentProcess = systemProcess, !currentProcess.isRunning {
+            systemProcess = nil
+        }
+
+        if let currentProcess = displayProcess, !currentProcess.isRunning {
+            displayProcess = nil
         }
     }
 
@@ -119,6 +163,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.renderStatus()
         }
 
+        do {
+            try caffeinateController.startSystemAwake()
+        } catch {
+            showStartError(error)
+        }
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
 
@@ -133,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        caffeinateController.stop()
+        caffeinateController.stopAll()
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -158,12 +208,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func toggleState() {
         if caffeinateController.isActive {
-            caffeinateController.stop()
+            caffeinateController.stopDisplayAwake()
             return
         }
 
         do {
-            try caffeinateController.start()
+            try caffeinateController.startDisplayAwake()
         } catch {
             renderStatus()
             showStartError(error)
@@ -207,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
             source.setEventHandler { [weak self] in
-                self?.caffeinateController.stop()
+                self?.caffeinateController.stopAll()
                 exit(128 + signalNumber)
             }
             source.resume()
@@ -223,11 +273,16 @@ if CommandLine.arguments.contains("--self-test") {
     let controller = CaffeinateController()
 
     do {
-        try controller.start()
-        print("ActiveLeft self-test: started caffeinate")
+        try controller.startSystemAwake()
+        print("ActiveLeft self-test: started system caffeinate")
+        try controller.startDisplayAwake()
+        print("ActiveLeft self-test: started display caffeinate")
         sleep(3)
-        controller.stop()
-        print("ActiveLeft self-test: stopped caffeinate")
+        controller.stopDisplayAwake()
+        print("ActiveLeft self-test: stopped display caffeinate")
+        sleep(2)
+        controller.stopAll()
+        print("ActiveLeft self-test: stopped system caffeinate")
         exit(0)
     } catch {
         fputs("ActiveLeft self-test failed: \(error.localizedDescription)\n", stderr)

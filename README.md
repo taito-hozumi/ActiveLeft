@@ -1,11 +1,11 @@
 # ActiveLeft
 
-ActiveLeft is a tiny macOS menu bar app for switching between two display states:
+ActiveLeft is a tiny macOS menu bar app for switching between two presence states:
 
-- `Active`: keep the display awake with `/usr/bin/caffeinate -d -w <app-pid>`.
-- `Left`: stop ActiveLeft's own `caffeinate` process and return to the existing macOS display sleep settings.
+- `Active`: keep the Mac awake and keep the display awake.
+- `Left`: keep the Mac awake and allow the display to sleep using the existing macOS display sleep settings.
 
-It is intentionally display-only. ActiveLeft does not edit `pmset`, does not require `sudo`, does not talk to the network, and does not try to manage system sleep or closed-lid behavior.
+ActiveLeft does not edit `pmset`, does not require `sudo`, does not talk to the network, and does not try to manage closed-lid behavior.
 
 ## Requirements
 
@@ -96,7 +96,7 @@ Before and after toggling, `pmset` settings should stay the same:
 pmset -g custom
 ```
 
-When `Active` is enabled, this should show a display sleep assertion owned by `caffeinate`:
+When `Active` is enabled, this should show system and display sleep assertions owned by `caffeinate`:
 
 ```bash
 pmset -g assertions
@@ -110,7 +110,7 @@ You can run the bundled smoke test:
 
 ## What ActiveLeft Is Not
 
-ActiveLeft is not a full power-management suite. It does not schedule wake/sleep windows, prevent all sleep modes, keep a closed MacBook awake, or replace tools such as Amphetamine. It is a small display-only toggle for people who want one obvious menu bar state and no persistent system-setting changes.
+ActiveLeft is not a full power-management suite. It does not schedule wake/sleep windows, keep a closed MacBook awake, or replace tools such as Amphetamine. It is a small menu bar toggle for people who want one obvious state and no persistent system-setting changes.
 
 Only one copy of ActiveLeft runs at a time for the same bundle identifier. If another copy is already open, the newer process exits.
 

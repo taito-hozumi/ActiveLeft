@@ -2,29 +2,60 @@
 #include <signal.h>
 
 @interface CaffeinateController : NSObject
-@property(nonatomic, strong) NSTask *task;
+@property(nonatomic, strong) NSTask *systemTask;
+@property(nonatomic, strong) NSTask *displayTask;
 @property(nonatomic, copy) void (^onStateChanged)(void);
 - (BOOL)isActive;
-- (BOOL)startWithError:(NSError **)error;
-- (void)stop;
+- (BOOL)startSystemAwakeWithError:(NSError **)error;
+- (BOOL)startDisplayAwakeWithError:(NSError **)error;
+- (void)stopDisplayAwake;
+- (void)stopAll;
 @end
 
 @implementation CaffeinateController
 
 - (BOOL)isActive {
-    return self.task != nil && self.task.isRunning;
+    return self.displayTask != nil && self.displayTask.isRunning;
 }
 
-- (BOOL)startWithError:(NSError **)error {
+- (BOOL)startSystemAwakeWithError:(NSError **)error {
     [self cleanupExitedTask];
 
-    if (self.isActive) {
+    if (self.systemTask != nil && self.systemTask.isRunning) {
         return YES;
     }
 
+    self.systemTask = [self startCaffeinateWithArguments:@[@"-i", @"-s", @"-w", [NSString stringWithFormat:@"%d", getpid()]]
+                                                   error:error];
+
+    return self.systemTask != nil;
+}
+
+- (BOOL)startDisplayAwakeWithError:(NSError **)error {
+    if (![self startSystemAwakeWithError:error]) {
+        return NO;
+    }
+
+    [self cleanupExitedTask];
+
+    if (self.displayTask != nil && self.displayTask.isRunning) {
+        return YES;
+    }
+
+    self.displayTask = [self startCaffeinateWithArguments:@[@"-d", @"-w", [NSString stringWithFormat:@"%d", getpid()]]
+                                                    error:error];
+
+    if (self.displayTask != nil && self.onStateChanged != nil) {
+        self.onStateChanged();
+    }
+
+    return self.displayTask != nil;
+}
+
+- (NSTask *)startCaffeinateWithArguments:(NSArray<NSString *> *)arguments error:(NSError **)error {
     NSTask *nextTask = [[NSTask alloc] init];
     nextTask.launchPath = @"/usr/bin/caffeinate";
-    nextTask.arguments = @[@"-d", @"-w", [NSString stringWithFormat:@"%d", getpid()]];
+    nextTask.arguments = arguments;
     nextTask.standardInput = [NSFileHandle fileHandleWithNullDevice];
     nextTask.standardOutput = [NSFileHandle fileHandleWithNullDevice];
     nextTask.standardError = [NSFileHandle fileHandleWithNullDevice];
@@ -34,14 +65,20 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             CaffeinateController *strongSelf = weakSelf;
 
-            if (strongSelf == nil || strongSelf.task != finishedTask) {
+            if (strongSelf == nil) {
                 return;
             }
 
-            strongSelf.task = nil;
+            if (strongSelf.displayTask == finishedTask) {
+                strongSelf.displayTask = nil;
 
-            if (strongSelf.onStateChanged != nil) {
-                strongSelf.onStateChanged();
+                if (strongSelf.onStateChanged != nil) {
+                    strongSelf.onStateChanged();
+                }
+            }
+
+            if (strongSelf.systemTask == finishedTask) {
+                strongSelf.systemTask = nil;
             }
         });
     };
@@ -57,22 +94,16 @@
                                      }];
         }
 
-        return NO;
+        return nil;
     }
 
-    self.task = nextTask;
-
-    if (self.onStateChanged != nil) {
-        self.onStateChanged();
-    }
-
-    return YES;
+    return nextTask;
 }
 
-- (void)stop {
+- (void)stopDisplayAwake {
     [self cleanupExitedTask];
 
-    NSTask *currentTask = self.task;
+    NSTask *currentTask = self.displayTask;
 
     if (currentTask == nil) {
         if (self.onStateChanged != nil) {
@@ -82,17 +113,10 @@
         return;
     }
 
-    if (currentTask.isRunning) {
-        [currentTask terminate];
+    [self stopTask:currentTask];
 
-        if (![self waitForTaskExit:currentTask timeout:2.0]) {
-            kill(currentTask.processIdentifier, SIGKILL);
-            [self waitForTaskExit:currentTask timeout:1.0];
-        }
-    }
-
-    if (self.task == currentTask) {
-        self.task = nil;
+    if (self.displayTask == currentTask) {
+        self.displayTask = nil;
     }
 
     if (self.onStateChanged != nil) {
@@ -100,9 +124,43 @@
     }
 }
 
+- (void)stopAll {
+    [self cleanupExitedTask];
+
+    if (self.displayTask != nil) {
+        [self stopTask:self.displayTask];
+    }
+
+    if (self.systemTask != nil) {
+        [self stopTask:self.systemTask];
+    }
+
+    self.displayTask = nil;
+    self.systemTask = nil;
+
+    if (self.onStateChanged != nil) {
+        self.onStateChanged();
+    }
+}
+
+- (void)stopTask:(NSTask *)task {
+    if (task.isRunning) {
+        [task terminate];
+
+        if (![self waitForTaskExit:task timeout:2.0]) {
+            kill(task.processIdentifier, SIGKILL);
+            [self waitForTaskExit:task timeout:1.0];
+        }
+    }
+}
+
 - (void)cleanupExitedTask {
-    if (self.task != nil && !self.task.isRunning) {
-        self.task = nil;
+    if (self.systemTask != nil && !self.systemTask.isRunning) {
+        self.systemTask = nil;
+    }
+
+    if (self.displayTask != nil && !self.displayTask.isRunning) {
+        self.displayTask = nil;
     }
 }
 
@@ -150,6 +208,12 @@
         [weakSelf renderStatus];
     };
 
+    NSError *error = nil;
+
+    if (![self.caffeinateController startSystemAwakeWithError:&error]) {
+        [self showStartError:error];
+    }
+
     self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
 
     NSStatusBarButton *button = self.statusItem.button;
@@ -163,7 +227,7 @@
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
     (void)notification;
-    [self.caffeinateController stop];
+    [self.caffeinateController stopAll];
 }
 
 - (void)statusItemClicked:(NSStatusBarButton *)sender {
@@ -188,13 +252,13 @@
 
 - (void)toggleState {
     if (self.caffeinateController.isActive) {
-        [self.caffeinateController stop];
+        [self.caffeinateController stopDisplayAwake];
         return;
     }
 
     NSError *error = nil;
 
-    if (![self.caffeinateController startWithError:&error]) {
+    if (![self.caffeinateController startDisplayAwakeWithError:&error]) {
         [self renderStatus];
         [self showStartError:error];
     }
@@ -246,7 +310,7 @@
 
         __weak typeof(self) weakSelf = self;
         dispatch_source_set_event_handler(source, ^{
-            [weakSelf.caffeinateController stop];
+            [weakSelf.caffeinateController stopAll];
             exit(128 + signalNumber);
         });
 
@@ -287,16 +351,27 @@ static int runSelfTest(void) {
         CaffeinateController *controller = [[CaffeinateController alloc] init];
         NSError *error = nil;
 
-        if (![controller startWithError:&error]) {
+        if (![controller startSystemAwakeWithError:&error]) {
             fprintf(stderr, "ActiveLeft self-test failed: %s\n",
                     error.localizedDescription.UTF8String ?: "Unknown error");
             return 1;
         }
 
-        puts("ActiveLeft self-test: started caffeinate");
+        puts("ActiveLeft self-test: started system caffeinate");
+
+        if (![controller startDisplayAwakeWithError:&error]) {
+            fprintf(stderr, "ActiveLeft self-test failed: %s\n",
+                    error.localizedDescription.UTF8String ?: "Unknown error");
+            return 1;
+        }
+
+        puts("ActiveLeft self-test: started display caffeinate");
         sleep(3);
-        [controller stop];
-        puts("ActiveLeft self-test: stopped caffeinate");
+        [controller stopDisplayAwake];
+        puts("ActiveLeft self-test: stopped display caffeinate");
+        sleep(2);
+        [controller stopAll];
+        puts("ActiveLeft self-test: stopped system caffeinate");
     }
 
     return 0;
